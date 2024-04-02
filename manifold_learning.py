@@ -142,6 +142,36 @@ def ot_transport_emd(Xs, Xt):
     transp_Xs_emd = ot_emd.transform(Xs=Xs)
     return transp_Xs_emd
 
+def ot_transport_mapping_linear(Xs, Xt, mu=1e0, eta=1e-8, bias=True, max_iter=20, verbose=True):
+    ot_mapping_linear = ot.da.MappingTransport(
+        kernel='linear',
+        mu=mu,
+        eta=eta,
+        bias=bias,
+        max_iter=max_iter,
+        verbose=verbose
+    )
+    ot_mapping_linear.fit(Xs=Xs, Xt=Xt)
+
+    transp_Xs_mapping_linear = ot_mapping_linear.transform(Xs=Xs)
+    return transp_Xs_mapping_linear
+
+def ot_transport_mapping_gaussian(Xs, Xt, eta=1e-5, mu=1e-1, bias=True, sigma=1,
+    max_iter=10, verbose=True):
+    ot_mapping_gaussian = ot.da.MappingTransport(
+        kernel='gaussian',
+        eta=eta,
+        mu=mu,
+        bias=bias,
+        sigma=sigma,
+        max_iter=max_iter,
+        verbose=verbose
+    )
+    ot_mapping_gaussian.fit(Xs=Xs, Xt=Xt)
+
+    transp_Xs_mapping_gaussian = ot_mapping_gaussian.transform(Xs=Xs)
+    return transp_Xs_mapping_gaussian
+
 def build_ot_cost_matrix(Xs, Xt, metric='sqeuclidean'):
     return ot.dist(Xs, Xt, metric=metric)
 
@@ -246,6 +276,7 @@ def recheck_vectorized(Xs: np.ndarray, Xt: np.ndarray, kernel_size=4, alpha=0.1,
     
     print("===> rechecking is completed!")
     return Xsc
+
 
 
 if __name__ == "__main__":
