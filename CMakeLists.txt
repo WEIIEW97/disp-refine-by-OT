@@ -9,6 +9,7 @@ file(GLOB headers ${CMAKE_CURRENT_LIST_DIR}/ot/*.h)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS CXX)
 
 add_executable(${PROJECT_NAME} 
         main.cpp
@@ -20,9 +21,12 @@ target_include_directories(
         PRIVATE
         ${OpenCV_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
+        ${HDF5_INCLUDE_DIRS}
 )
 
 target_link_libraries(
         ${PROJECT_NAME}
         ${OpenCV_LIBS}
+        ${HDF5_LIBRARIES} 
+        ${HDF5_CXX_LIBRARIES}
 )

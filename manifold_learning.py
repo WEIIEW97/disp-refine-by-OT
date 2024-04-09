@@ -228,7 +228,7 @@ def recheck(Xs:np.ndarray, Xt:np.ndarray, kernel_size=4, alpha=0.1, Ws=0.5, Wt=0
             block_s = Xsc[i:i+kernel_size, j:j+kernel_size]
             block_t = Xt[i:i+kernel_size, j:j+kernel_size]
             mu_s = np.mean(block_s)
-            mu_t = np.mean(block_t)
+            mu_t = np.mean(block_t) 
             minv_s = np.min(block_s)
             minv_t = np.min(block_t)
             maxv_s = np.max(block_s)

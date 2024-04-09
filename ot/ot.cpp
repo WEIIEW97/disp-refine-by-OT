@@ -1,7 +1,5 @@
 #include "ot.h"
 #include "EMD.h"
-#include "Eigen/src/Core/Array.h"
-#include "Eigen/src/Core/util/Constants.h"
 
 namespace ot {
   std::string check_result(int result_code) {
