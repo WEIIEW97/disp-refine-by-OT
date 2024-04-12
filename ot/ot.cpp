@@ -46,24 +46,6 @@ namespace ot {
         zeros weights. This means that while the primal variable (transport
         matrix) is exact, the solver only returns feasible dual potentials
         on the samples with weights different from zero.
-
-    Parameters
-    ----------
-    a : (ns,) numpy.ndarray, float64
-        source histogram
-    b : (nt,) numpy.ndarray, float64
-        target histogram
-    M : (ns,nt) numpy.ndarray, float64
-        loss matrix
-    max_iter : uint64_t
-        The maximum number of iterations before stopping the optimization
-        algorithm if it has not converged.
-
-    Returns
-    -------
-    gamma: (ns x nt) numpy.ndarray
-        Optimal transportation matrix for the given parameters
-
     */
     int n1 = M.rows();
     int n2 = M.cols();
@@ -110,34 +92,6 @@ namespace ot {
     /**
     Solves the Earth Movers distance problem between sorted 1d measures and
     returns the OT matrix and the associated cost
-
-    Parameters
-    ----------
-    u_weights : (ns,) ndarray, float64
-        Source histogram
-    v_weights : (nt,) ndarray, float64
-        Target histogram
-    u : (ns,) ndarray, float64
-        Source dirac locations (on the real line)
-    v : (nt,) ndarray, float64
-        Target dirac locations (on the real line)
-    metric: str, optional (default='sqeuclidean')
-        Metric to be used. Only strings listed in :func:`ot.dist` are accepted.
-        Due to implementation details, this function runs faster when
-        `'sqeuclidean'`, `'minkowski'`, `'cityblock'`,  or `'euclidean'` metrics
-        are used.
-    p: float, optional (default=1.0)
-         The p-norm to apply for if metric='minkowski'
-
-    Returns
-    -------
-    gamma: (n, ) ndarray, float64
-        Values in the Optimal transportation matrix
-    indices: (n, 2) ndarray, int64
-        Indices of the values stored in gamma for the Optimal transportation
-        matrix
-    cost
-        cost associated to the optimal transportation
     */
 
     double cost_ = 0.f;
@@ -200,6 +154,112 @@ namespace ot {
     dataset.indices = indices_;
 
     return dataset;
+  }
+
+  void center_ot_dual(Eigen::ArrayXd& alpha0, Eigen::ArrayXd& beta0,
+                      Eigen::ArrayXd& a, Eigen::ArrayXd& b) {
+    /**
+    The main idea of this function is to find unique dual potentials
+    that ensure some kind of centering/fairness. The main idea is to find dual
+    potentials that lead to the same final objective value for both source and
+    targets (see below for more details). It will help having stability when
+    multiple calling of the OT solver with small changes.
+
+    Basically we add another constraint to the potential that will not
+    change the objective value but will ensure unicity. The constraint
+    is the following:
+
+    .. math::
+        \alpha^T \mathbf{a} = \beta^T \mathbf{b}
+
+    in addition to the OT problem constraints.
+
+    since :math:`\sum_i a_i=\sum_j b_j` this can be solved by adding/removing
+    a constant from both  :math:`\alpha_0` and :math:`\beta_0`.
+
+    .. math::
+        c &= \frac{\beta_0^T \mathbf{b} - \alpha_0^T \mathbf{a}}{\mathbf{1}^T
+    \mathbf{b} + \mathbf{1}^T \mathbf{a}}
+
+        \alpha &= \alpha_0 + c
+
+        \beta &= \beta_0 + c
+    */
+    if (a.size() == 0) {
+      a = Eigen::ArrayXd::Ones(alpha0.size()) / alpha0.size();
+    }
+
+    if (b.size() == 0) {
+      b = Eigen::ArrayXd::Ones(beta0.size()) / beta0.size();
+    }
+
+    auto c =
+        (b.matrix().dot(beta0.matrix()) - a.matrix().dot(alpha0.matrix())) /
+        (a.sum() + b.sum());
+
+    alpha0 += c;
+    beta0 -= c;
+  }
+
+  void estimate_dual_null_weights(Eigen::ArrayXd& alpha0, Eigen::ArrayXd& beta0,
+                                  const Eigen::ArrayXd& a,
+                                  const Eigen::ArrayXd& b,
+                                  const RowMajorMatrixXd& M) {
+    /**Estimate feasible values for 0-weighted dual potentials
+
+    The feasible values are computed efficiently but rather coarsely.
+
+    .. warning::
+        This function is necessary because the C++ solver in `emd_c`
+        discards all samples in the distributions with
+        zeros weights. This means that while the primal variable (transport
+        matrix) is exact, the solver only returns feasible dual potentials
+        on the samples with weights different from zero.
+
+    First we compute the constraints violations:
+
+    .. math::
+        \mathbf{V} = \alpha + \beta^T - \mathbf{M}
+
+    Next we compute the max amount of violation per row (:math:`\alpha`) and
+    columns (:math:`beta`)
+
+    .. math::
+        \mathbf{v^a}_i = \max_j \mathbf{V}_{i,j}
+
+        \mathbf{v^b}_j = \max_i \mathbf{V}_{i,j}
+
+    Finally we update the dual potential with 0 weights if a
+    constraint is violated
+
+    .. math::
+        \alpha_i = \alpha_i - \mathbf{v^a}_i \quad \text{ if } \mathbf{a}_i=0
+    \text{ and } \mathbf{v^a}_i>0
+
+        \beta_j = \beta_j - \mathbf{v^b}_j \quad \text{ if } \mathbf{b}_j=0
+    \text{ and } \mathbf{v^b}_j > 0
+
+    In the end the dual potentials are centered using function
+    :py:func:`ot.lp.center_ot_dual`.
+
+    Note that all those updates do not change the objective value of the
+    solution but provide dual potentials that do not violate the constraints.
+     */
+  }
+
+  RowMajorMatrixXd emd(Eigen::ArrayXd& a, Eigen::ArrayXd& b,
+                       const RowMajorMatrixXd& M, uint64_t numIterMax,
+                       int numThreads, bool center_dual) {
+    b = b * a.sum() / b.sum();
+
+    EMDCluster crater;
+    crater = emd_c(a, b, M, numIterMax, numThreads);
+
+    if (center_dual) {
+      center_ot_dual(crater.alpha, crater.beta, a, b);
+    }
+
+    return crater.G;
   }
 
 } // namespace ot

@@ -162,6 +162,44 @@ Eigen::MatrixXd load_hdf5_to_eigen_col_major(std::string data_path,
   return matrix;
 }
 
+ot::RowMajorMatrixXd recheck(const ot::RowMajorMatrixXd& Xs,
+                             const ot::RowMajorMatrixXd& Xt, int kernel_size,
+                             double alpha, double Ws, double Wt) {
+  assert(Xs.rows() == Xt.rows() && Xs.cols() == Xt.cols() &&
+         "Images must have the same dimensions.");
+  assert(Xs.rows() % kernel_size == 0 &&
+         "Image height must be divisible by kernel_size.");
+  assert(Xs.cols() % kernel_size == 0 &&
+         "Image width must be divisible by kernel_size.");
+
+  ot::RowMajorMatrixXd Xsc = Xs;
+
+  for (int i = 0; i <= Xs.rows() - kernel_size; i += kernel_size) {
+    for (int j = 0; j <= Xs.cols() - kernel_size; j += kernel_size) {
+      // Calculate the block mean and min max
+      auto block_s = Xsc.block(i, j, kernel_size, kernel_size);
+      auto block_t = Xt.block(i, j, kernel_size, kernel_size);
+      double mu_s = block_s.mean();
+      double mu_t = block_t.mean();
+      double minv_s = block_s.minCoeff();
+      double minv_t = block_t.minCoeff();
+      double maxv_s = block_s.maxCoeff();
+      double maxv_t = block_t.maxCoeff();
+
+      bool cond = std::abs(mu_s - mu_t) <= alpha * mu_t &&
+                  std::abs(minv_s - minv_t) <= alpha * minv_t &&
+                  std::abs(maxv_s - maxv_t) <= alpha * maxv_t;
+
+      if (!cond) {
+        Xsc.block(i, j, kernel_size, kernel_size) = block_t * Wt + block_s * Ws;
+      }
+    }
+  }
+
+  std::cout << "===> rechecking is completed!" << std::endl;
+  return Xsc;
+}
+
 void build_pipeline(ot::RowMajorMatrixXd Xs, ot::RowMajorMatrixXd Xt,
                     double hollow_thr, std::string method) {
   auto insufficient_indices = where(Xs, hollow_thr);
@@ -171,5 +209,10 @@ void build_pipeline(ot::RowMajorMatrixXd Xs, ot::RowMajorMatrixXd Xt,
   if (method == "normal") {
     auto norm_Xs_crate = normal_dist_normalizer(Xs);
     auto norm_Xt_crate = normal_dist_normalizer(Xt);
+
+    // add EMD transportation later
+  } else if (method == "minmax") {
+    auto norm_Xs_crate = minmax_dist_normalizer(Xs);
+    auto norm_Xt_crate = minmax_dist_normalizer(Xt);
   }
 }
