@@ -28,4 +28,3 @@ Eigen::MatrixXd load_hdf5_to_eigen_col_major(std::string data_path,
                                              std::string dataset_name);
 ot::RowMajorMatrixXd load_hdf5_to_eigen_row_major(std::string data_path,
                                                   std::string dataset_name);
-vector<pair<int, int>> where(const ot::RowMajorMatrixXd& M, double thr);

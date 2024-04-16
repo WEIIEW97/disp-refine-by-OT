@@ -43,7 +43,16 @@ namespace ot {
     double cost;
   };
 
+  struct AlphaBetaCrater {
+    Eigen::ArrayXd alpha;
+    Eigen::ArrayXd beta;
+  };
+
   std::string check_result(int result_code);
+  std::vector<std::pair<int, int>> where(const ot::RowMajorMatrixXd& M,
+                                         double thr);
+  void indexing_op(ot::RowMajorMatrixXd& M,
+                   const std::vector<std::pair<int, int>>& indices, double v);
   EMDCluster emd_c(Eigen::ArrayXd a, Eigen::ArrayXd b, RowMajorMatrixXd M,
                    uint64_t max_iter, int numThreads);
   EMDCluster1d emd_1d_sorted(Eigen::ArrayXd u_weights, Eigen::ArrayXd v_weights,

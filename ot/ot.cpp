@@ -1,5 +1,6 @@
 #include "ot.h"
 #include "EMD.h"
+using std::vector, std::pair;
 
 namespace ot {
   std::string check_result(int result_code) {
@@ -15,6 +16,39 @@ namespace ot {
       message =
           "numItermax reached before optimality. Try to increase numItermax";
     return message;
+  }
+
+  vector<pair<int, int>> where(const ot::RowMajorMatrixXd& M, double thr) {
+    vector<pair<int, int>> indices;
+
+    for (int i = 0; i < M.rows(); ++i) {
+      for (int j = 0; j < M.cols(); ++j) {
+        if (M.coeffRef(i, j) <= thr) {
+          indices.emplace_back(i, j);
+        }
+      }
+    }
+
+    return indices;
+  }
+
+  vector<int> where(const Eigen::ArrayXd& A, double thr) {
+    vector<int> indices;
+
+    for (int i = 0; i < A.size(); ++i) {
+      if (A(i) <= thr) {
+        indices.emplace_back(i);
+      }
+    }
+
+    return indices;
+  }
+
+  void indexing_op(ot::RowMajorMatrixXd& M,
+                   const vector<pair<int, int>>& indices, double v) {
+    for (const auto& index : indices) {
+      M(index.first, index.second) = v;
+    }
   }
 
   EMDCluster emd_c(Eigen::ArrayXd a, Eigen::ArrayXd b, RowMajorMatrixXd M,
@@ -156,8 +190,54 @@ namespace ot {
     return dataset;
   }
 
-  void center_ot_dual(Eigen::ArrayXd& alpha0, Eigen::ArrayXd& beta0,
-                      Eigen::ArrayXd& a, Eigen::ArrayXd& b) {
+  // void center_ot_dual(Eigen::ArrayXd& alpha0, Eigen::ArrayXd& beta0,
+  //                     Eigen::ArrayXd& a, Eigen::ArrayXd& b) {
+  //   /**
+  //   The main idea of this function is to find unique dual potentials
+  //   that ensure some kind of centering/fairness. The main idea is to find
+  //   dual potentials that lead to the same final objective value for both
+  //   source and targets (see below for more details). It will help having
+  //   stability when multiple calling of the OT solver with small changes.
+
+  //   Basically we add another constraint to the potential that will not
+  //   change the objective value but will ensure unicity. The constraint
+  //   is the following:
+
+  //   .. math::
+  //       \alpha^T \mathbf{a} = \beta^T \mathbf{b}
+
+  //   in addition to the OT problem constraints.
+
+  //   since :math:`\sum_i a_i=\sum_j b_j` this can be solved by adding/removing
+  //   a constant from both  :math:`\alpha_0` and :math:`\beta_0`.
+
+  //   .. math::
+  //       c &= \frac{\beta_0^T \mathbf{b} - \alpha_0^T \mathbf{a}}{\mathbf{1}^T
+  //   \mathbf{b} + \mathbf{1}^T \mathbf{a}}
+
+  //       \alpha &= \alpha_0 + c
+
+  //       \beta &= \beta_0 + c
+  //   */
+  //   if (a.size() == 0) {
+  //     a = Eigen::ArrayXd::Ones(alpha0.size()) / alpha0.size();
+  //   }
+
+  //   if (b.size() == 0) {
+  //     b = Eigen::ArrayXd::Ones(beta0.size()) / beta0.size();
+  //   }
+
+  //   auto c =
+  //       (b.matrix().dot(beta0.matrix()) - a.matrix().dot(alpha0.matrix())) /
+  //       (a.sum() + b.sum());
+
+  //   alpha0 += c;
+  //   beta0 -= c;
+  // }
+
+  AlphaBetaCrater center_ot_dual(const Eigen::ArrayXd& alpha0,
+                                 const Eigen::ArrayXd& beta0, Eigen::ArrayXd& a,
+                                 Eigen::ArrayXd& b) {
     /**
     The main idea of this function is to find unique dual potentials
     that ensure some kind of centering/fairness. The main idea is to find dual
@@ -185,6 +265,8 @@ namespace ot {
 
         \beta &= \beta_0 + c
     */
+    AlphaBetaCrater AB;
+
     if (a.size() == 0) {
       a = Eigen::ArrayXd::Ones(alpha0.size()) / alpha0.size();
     }
@@ -197,14 +279,16 @@ namespace ot {
         (b.matrix().dot(beta0.matrix()) - a.matrix().dot(alpha0.matrix())) /
         (a.sum() + b.sum());
 
-    alpha0 += c;
-    beta0 -= c;
+    AB.alpha = alpha0 + c;
+    AB.beta = beta0 - c;
+    return AB;
   }
 
-  void estimate_dual_null_weights(Eigen::ArrayXd& alpha0, Eigen::ArrayXd& beta0,
-                                  const Eigen::ArrayXd& a,
-                                  const Eigen::ArrayXd& b,
-                                  const RowMajorMatrixXd& M) {
+  AlphaBetaCrater estimate_dual_null_weights(Eigen::ArrayXd& alpha0,
+                                             Eigen::ArrayXd& beta0,
+                                             Eigen::ArrayXd& a,
+                                             Eigen::ArrayXd& b,
+                                             const RowMajorMatrixXd& M) {
     /**Estimate feasible values for 0-weighted dual potentials
 
     The feasible values are computed efficiently but rather coarsely.
@@ -245,6 +329,27 @@ namespace ot {
     Note that all those updates do not change the objective value of the
     solution but provide dual potentials that do not violate the constraints.
      */
+
+    auto adel_ = where(a, 0);
+    auto bdel_ = where(b, 0);
+
+    Eigen::ArrayXd adel =
+        Eigen::Map<Eigen::ArrayXi>(adel_.data(), adel_.size()).cast<double>();
+    Eigen::ArrayXd bdel =
+        Eigen::Map<Eigen::ArrayXi>(bdel_.data(), bdel_.size()).cast<double>();
+
+    Eigen::Map<RowMajorMatrixXd> alpha0_2d(alpha0.data(), alpha0.size(), 1);
+    Eigen::Map<RowMajorMatrixXd> beta0_2d(beta0.data(), beta0.size(), 1);
+
+    auto constraint_violation = alpha0_2d + beta0_2d - M;
+
+    auto aviol = constraint_violation.rowwise().maxCoeff().eval();
+    auto bviol = constraint_violation.colwise().maxCoeff().eval();
+    aviol.resize(adel.size());
+    auto alpha_up = -1 * adel * aviol.cwiseMax(0).eval().array();
+    auto beta_up = -1 * bdel * bviol.cwiseMax(0).eval().array();
+
+    return center_ot_dual(alpha_up.eval(), beta_up.eval(), a, b);
   }
 
   RowMajorMatrixXd emd(Eigen::ArrayXd& a, Eigen::ArrayXd& b,
@@ -252,14 +357,57 @@ namespace ot {
                        int numThreads, bool center_dual) {
     b = b * a.sum() / b.sum();
 
+    auto adel = where(a, 0);
+    auto bdel = where(b, 0);
+
     EMDCluster crater;
     crater = emd_c(a, b, M, numIterMax, numThreads);
 
+    AlphaBetaCrater AB;
     if (center_dual) {
-      center_ot_dual(crater.alpha, crater.beta, a, b);
+      AB = center_ot_dual(crater.alpha, crater.beta, a, b);
+      // update parameters
+      crater.alpha = AB.alpha;
+      crater.beta = AB.beta;
+    }
+
+    if (!adel.empty() || !bdel.empty()) {
+      AB = estimate_dual_null_weights(crater.alpha, crater.beta, a, b, M);
+      // update parameters
+      crater.alpha = AB.alpha;
+      crater.beta = AB.beta;
     }
 
     return crater.G;
+  }
+
+  EMDCluster emd_full(Eigen::ArrayXd& a, Eigen::ArrayXd& b,
+                      const RowMajorMatrixXd& M, uint64_t numIterMax,
+                      int numThreads, bool center_dual) {
+    b = b * a.sum() / b.sum();
+
+    auto adel = where(a, 0);
+    auto bdel = where(b, 0);
+
+    EMDCluster crater;
+    crater = emd_c(a, b, M, numIterMax, numThreads);
+
+    AlphaBetaCrater AB;
+    if (center_dual) {
+      AB = center_ot_dual(crater.alpha, crater.beta, a, b);
+      // update parameters
+      crater.alpha = AB.alpha;
+      crater.beta = AB.beta;
+    }
+
+    if (!adel.empty() || !bdel.empty()) {
+      AB = estimate_dual_null_weights(crater.alpha, crater.beta, a, b, M);
+      // update parameters
+      crater.alpha = AB.alpha;
+      crater.beta = AB.beta;
+    }
+
+    return crater;
   }
 
 } // namespace ot

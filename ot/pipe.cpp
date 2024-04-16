@@ -2,6 +2,8 @@
 #include "interp2d.h"
 #include <memory>
 
+using namespace ot;
+
 struct NormalDistCrate {
   ot::RowMajorMatrixXd norm;
   double mu;
@@ -25,27 +27,6 @@ double* load_hdf5(std::string data_path, std::string dataset_name) {
   dataset.read(data, H5::PredType::NATIVE_DOUBLE, memspace, dataspace);
 
   return data;
-}
-
-vector<pair<int, int>> where(const ot::RowMajorMatrixXd& M, double thr) {
-  vector<pair<int, int>> indices;
-
-  for (int i = 0; i < M.rows(); ++i) {
-    for (int j = 0; j < M.cols(); ++j) {
-      if (M.coeffRef(i, j) <= thr) {
-        indices.emplace_back(i, j);
-      }
-    }
-  }
-
-  return indices;
-}
-
-void indexing_op(ot::RowMajorMatrixXd& M, const vector<pair<int, int>>& indices,
-                 double v) {
-  for (const auto& index : indices) {
-    M(index.first, index.second) = v;
-  }
 }
 
 void free_hdf5(double* data) { delete[] data; }
