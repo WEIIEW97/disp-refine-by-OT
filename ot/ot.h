@@ -39,7 +39,7 @@ namespace ot {
 
   struct EMDCluster1d {
     Eigen::ArrayXd G;
-    Eigen::ArrayXd indices;
+    RowMajorMatrixXi indices;
     double cost;
   };
 

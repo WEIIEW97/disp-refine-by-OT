@@ -21,12 +21,12 @@
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
     RowMajorMatrixXd;
 
-Eigen::ArrayXd unif(int n) {
+inline Eigen::ArrayXd unif(int n) {
   // n has to be greater than 0
   return Eigen::ArrayXd::Ones(n) / n;
 }
 
-RowMajorMatrixXd euclidean_distances(const RowMajorMatrixXd& X,
+inline RowMajorMatrixXd euclidean_distances(const RowMajorMatrixXd& X,
                                      const RowMajorMatrixXd& Y,
                                      bool squared = false) {
   Eigen::VectorXd X_sq = X.rowwise().squaredNorm();
@@ -49,7 +49,7 @@ RowMajorMatrixXd euclidean_distances(const RowMajorMatrixXd& X,
   return dot;
 }
 
-RowMajorMatrixXd minkowski_distance(const RowMajorMatrixXd& X,
+inline RowMajorMatrixXd minkowski_distance(const RowMajorMatrixXd& X,
                                     const RowMajorMatrixXd& Y, double p) {
   assert(X.cols() == Y.cols() &&
          "X and Y must have the same number of columns.");
@@ -65,7 +65,7 @@ RowMajorMatrixXd minkowski_distance(const RowMajorMatrixXd& X,
   return dist;
 }
 
-RowMajorMatrixXd dist(const RowMajorMatrixXd& x1, const RowMajorMatrixXd& x2,
+inline RowMajorMatrixXd dist(const RowMajorMatrixXd& x1, const RowMajorMatrixXd& x2,
                       const std::string& metric = "sqeuclidean",
                       double p = 2.0f) {
   if (metric == "sqeuclidean")

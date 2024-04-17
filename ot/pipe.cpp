@@ -16,6 +16,7 @@ struct MinMaxDistCrate {
   double maxv;
 };
 
+#ifdef USE_HDF5
 double* load_hdf5(std::string data_path, std::string dataset_name) {
   H5::H5File file(data_path, H5F_ACC_RDONLY);
   H5::DataSet dataset = file.openDataSet(dataset_name);
@@ -30,6 +31,7 @@ double* load_hdf5(std::string data_path, std::string dataset_name) {
 }
 
 void free_hdf5(double* data) { delete[] data; }
+#endif
 
 ot::RowMajorMatrixXd distribution_normalize(const ot::RowMajorMatrixXd& M) {
   auto mu = M.mean();
@@ -97,6 +99,7 @@ MinMaxDistCrate minmax_dist_normalizer(const ot::RowMajorMatrixXd& M) {
   return crate;
 }
 
+#ifdef USE_HDF5
 ot::RowMajorMatrixXd load_hdf5_to_eigen_row_major(std::string data_path,
                                                   std::string dataset_name) {
   H5::H5File file(data_path, H5F_ACC_RDONLY);
@@ -141,6 +144,20 @@ Eigen::MatrixXd load_hdf5_to_eigen_col_major(std::string data_path,
   dataset.read(matrix.data(), H5::PredType::NATIVE_DOUBLE);
 
   return matrix;
+}
+#endif
+
+Eigen::MatrixXd load_npy_to_eigen_col_major(const std::string& data_path) {
+  cnpy::NpyArray arr = cnpy::npy_load(data_path);
+  Eigen::Map<Eigen::MatrixXd> m(arr.data<double>(), arr.shape[0], arr.shape[1]);
+  return m;
+}
+
+ot::RowMajorMatrixXd load_npy_to_eigen_row_major(const std::string& data_path) {
+  cnpy::NpyArray arr = cnpy::npy_load(data_path);
+  Eigen::Map<ot::RowMajorMatrixXd> m(arr.data<double>(), arr.shape[0],
+                                     arr.shape[1]);
+  return m;
 }
 
 ot::RowMajorMatrixXd recheck(const ot::RowMajorMatrixXd& Xs,

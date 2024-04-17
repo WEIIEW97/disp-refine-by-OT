@@ -17,14 +17,21 @@
 #pragma once
 
 #include "ot.h"
+#ifdef USE_HDF5
 #include <H5Cpp.h>
+#endif
+#include "cnpy/cnpy.h"
 #include <vector>
 #include <utility>
 
 using std::vector, std::pair;
 
-
+#ifdef USE_HDF5
 Eigen::MatrixXd load_hdf5_to_eigen_col_major(std::string data_path,
                                              std::string dataset_name);
 ot::RowMajorMatrixXd load_hdf5_to_eigen_row_major(std::string data_path,
                                                   std::string dataset_name);
+#endif
+
+Eigen::MatrixXd load_npy_to_eigen_col_major(const std::string& data_path);
+ot::RowMajorMatrixXd load_npy_to_eigen_row_major(const std::string& data_path);
