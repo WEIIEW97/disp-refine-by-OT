@@ -8,11 +8,11 @@ def image_resize(img, sz):
     return cv2.resize(img, sz, interpolation=cv2.INTER_LANCZOS4)
 
 
-def load_disp_from_mat(path):
+def load_disp_from_mat(path, dataset_name="data"):
     """load left disparity from .mat file."""
     with h5py.File(path, "r") as file:
         print("Keys: %s" % file.keys())
-        dataset = file["out/s1out/cleanDispL"]
+        dataset = file[dataset_name]
         disp = dataset[:]
 
     return disp
