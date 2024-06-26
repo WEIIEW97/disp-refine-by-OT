@@ -286,15 +286,17 @@ if __name__ == "__main__":
     for sub in subfolders:
         agg_path = f'data/{sub}/output_0222_agg.npy'
         dl_path = f'data/{sub}/output_0222_DL.npy'
-        ot_agg_normal_save_path = f'data/{sub}/OT_normal_0222_agg.mat'
-        ot_agg_minmax_save_path = f'data/{sub}/OT_minmax_0222_agg.mat'
-        scaled_agg_save_path = f'data/{sub}/scaled_0222_agg.mat'
+        dlv2_path = f'data/{sub}/output_0626_DLV2.npy'
+        ot_agg_normal_save_path = f'data/{sub}/OT_normal_0626_agg.mat'
+        ot_agg_minmax_save_path = f'data/{sub}/OT_minmax_0626_agg.mat'
+        scaled_agg_save_path = f'data/{sub}/scaled_0626_agg.mat'
         full_agg = np.load(agg_path)
         full_dl = np.load(dl_path)
+        full_dlv2 = np.load(dlv2_path)
 
         # resize the source and target image for computation efficiency
         scaled_agg = image_resize(full_agg, (full_agg.shape[0]//2, full_agg.shape[1]//2))
-        scaled_dl = image_resize(full_dl, (full_dl.shape[0]//2, full_dl.shape[1]//2))
+        scaled_dl = image_resize(full_dlv2, (full_dlv2.shape[0]//2, full_dlv2.shape[1]//2))
 
         print("Switching to normal method.")
         ret_norm = build_pipeline(Xagg=scaled_agg, Xdl=scaled_dl, method="normal")

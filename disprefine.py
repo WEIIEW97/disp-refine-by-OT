@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 import cv2
-from DL import inference_single
+from DL import inference_single, inference_single_v2
 
 
 def image_resize(img, sz):
@@ -30,22 +30,23 @@ def save_numpy_array(arr, save_path):
  
 
 if __name__ == "__main__":
-    model_path="/algdata01/wei.wei/log/depth-anything/depth_anything_vitl14.pth"
-    subfolders = [12, 19]
+    model_path="/home/william/Downloads/depth_anything_v2_vitl.pth"
+    subfolders = [11, 12, 19]
     for sub in subfolders:
-        path = f"data/{sub}/output_0222_agg_mask.mat"
-        disp = load_disp_from_mat(path)
-        print(disp.T.shape)
-        disp_save_path = f'data/{sub}/output_0222_agg.npy'
-        save_numpy_array(disp.T, disp_save_path)
+        # path = f"data/{sub}/output_0222_agg_mask.mat"
+        # disp = load_disp_from_mat(path)
+        # print(disp.T.shape)
+        # disp_save_path = f'data/{sub}/output_0222_agg.npy'
+        # save_numpy_array(disp.T, disp_save_path)
 
         image_path = f"data/{sub}/left.png"
         image = cv2.imread(image_path)
-        predicted = inference_single(image, model_path)
+        # predicted = inference_single(image, model_path)
+        predicted = inference_single_v2(image, model_path)
     # print(predicted)
     # print(predicted.shape)
     # save_path = "data/11/output_0222_DL.mat"  
     # save_numpy_array_to_matlab(predicted, save_path)
-        predicted_save_path = f"data/{sub}/output_0222_DL.npy"
+        predicted_save_path = f"data/{sub}/output_0626_DLV2.npy"
         save_numpy_array(predicted, predicted_save_path)
     print("===> done!")  

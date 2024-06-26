@@ -2,24 +2,33 @@ import argparse
 import cv2
 import numpy as np
 import os
+import glob
+import  matplotlib
 import torch
 import torch.nn.functional as F
 from torchvision.transforms import Compose
 from tqdm import tqdm
 
-# from .depth_anything.dpt import DPT_DINOv2
-# from .depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
 from .depth_anything.dpt import DPT_DINOv2
 from .depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
 
+from .depth_anything_v2.dpt import DepthAnythingV2
 
+
+DPTV2_model_configs = {
+    'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+    'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
+    'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
+    'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
+}
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--img_path", type=str)
+    parser.add_argument("--encoder", type=str, default="vitl", choices=['vits','vitb','vitl','vitg'])
     parser.add_argument("--outdir", type=str, default="vis_depth")
     parser.add_argument("--model_path", type=str, default="depth_anything_vitl14.pth")
-
+    parser.add_argument("--input_size", type=int, default=518)
     parser.add_argument(
         "--pred_only",
         dest="pred_only",
@@ -32,6 +41,7 @@ def parse_args():
         action="store_true",
         help="do not apply colorful palette",
     )
+
 
     return parser.parse_args()
 
@@ -185,6 +195,79 @@ def inference_single(image, model_path, is_scale=False) -> np.ndarray:
         return depth_raw
 
 
+def DPTV2_inference(args):
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    model = DepthAnythingV2(**DPTV2_model_configs[args.encoder])
+    ckpt = torch.load(args.model_path)
+    model.load_state_dict(ckpt)
+    model = model.to(DEVICE).eval()
+
+    total_params = sum(param.numel() for param in model.parameters())
+    print("Total parameters: {:.2f}M".format(total_params / 1e6))
+    
+
+    if os.path.isfile(args.img_path):
+        if args.img_path.endswith('txt'):
+            with open(args.img_path, 'r') as f:
+                filenames = f.read().splitlines()
+        else:
+            filenames = [args.img_path]
+    else:
+        filenames = glob.glob(os.path.join(args.img_path, '**/*'), recursive=True)
+    
+    os.makedirs(args.outdir, exist_ok=True)
+    
+    cmap = matplotlib.colormaps.get_cmap('Spectral_r')
+
+    for k, filename in enumerate(filenames):
+        print(f'Progress {k+1}/{len(filenames)}: {filename}')
+    
+        raw_image = cv2.imread(filename)
+        depth = model.infer_image(raw_image, args.input_size)
+        depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
+        depth = depth.astype(np.uint8)
+        
+        if args.grayscale:
+            depth = np.repeat(depth[..., np.newaxis], 3, axis=-1)
+        else:
+            depth = (cmap(depth)[:, :, :3] * 255)[:, :, ::-1].astype(np.uint8)
+        
+        if args.pred_only:
+            cv2.imwrite(os.path.join(args.outdir, os.path.splitext(os.path.basename(filename))[0] + '.png'), depth)
+        else:
+            split_region = np.ones((raw_image.shape[0], 50, 3), dtype=np.uint8) * 255
+            combined_result = cv2.hconcat([raw_image, split_region, depth])
+            
+            cv2.imwrite(os.path.join(args.outdir, os.path.splitext(os.path.basename(filename))[0] + '.png'), combined_result)
+
+    print("--> done!")
+
+
+def inference_single_v2(image, model_path, encoder='vitl', input_size=518, is_scale=False):
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    model = DepthAnythingV2(**DPTV2_model_configs[encoder])
+    ckpt = torch.load(model_path)
+    model.load_state_dict(ckpt)
+    model = model.to(DEVICE).eval()
+
+    total_params = sum(param.numel() for param in model.parameters())
+    print("Total parameters: {:.2f}M".format(total_params / 1e6))
+
+    depth = model.infer_image(image, input_size)
+    depth_raw = depth.astype(np.float32)
+    depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
+
+    depth = depth.astype(np.uint8)
+    if is_scale:
+        return depth
+    else:
+        return depth_raw
+
+
 if __name__ == "__main__":
     args = parse_args()
-    inference(args)
+    # for DPTV1
+    # inference(args)
+
+    # for DPTV2
+    DPTV2_inference(args)

@@ -1,1 +1,1 @@
-from .inference import inference_single
+from .inference import inference_single, inference_single_v2
