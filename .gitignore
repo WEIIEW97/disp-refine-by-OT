@@ -1,9 +1,12 @@
-__pycache__
 **/__pycache__
 
 checkpoints
 build
 .cache
+.idea
 
 *.html
 *.pdf
+
+**/cmake-build-debug
+**/cmake-build-release

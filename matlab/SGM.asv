@@ -1,0 +1,14 @@
+clc; clear;
+
+root_dir = "/home/william/extdisk/data/middlebury/middlebury2014/Bicycle1-perfect";
+left_img = fullfile(root_dir, 'img.png');
+right_img = fullfile(root_dir, 'im1.png');
+
+limg = imread(left_img);
+rimg = imread(right_img);
+limg = imresize(limg, 0.5);
+rimg = imresize(rimg, 0.5);
+disp = disparitySGM(rgb2gray(limg), rgb2gray(rimg), 'Blocksize', 15, 'DisparityRange', [0, 384], 'UniqueThreshold', 0 );
+disp(disp<0)=0;
+imshow(disp, []);
+colorma
