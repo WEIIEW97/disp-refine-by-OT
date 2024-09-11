@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from tqdm import tqdm
+
 
 def recheck(Xs: np.ndarray, Xt: np.ndarray, kernel_size=4, alpha=0.1, Ws=0.5, Wt=0.5):
     # make sure the width and height is divisible by kernel_size
@@ -88,11 +90,12 @@ def recheck_vectorized(
 
 
 class KLTripletOptimizer:
-    def __init__(self, xs, xt, xd, device="cuda", reg_weight=1e-8):
-        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+
+    def __init__(self, xs, xt, xd, device='cuda', reg_weight=1e-8):
+        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         print(f"Running on: {self.device}")
-        self.kl_loss = nn.KLDivLoss(reduction="batchmean").to(self.device)
-        self.huber_loss = nn.HuberLoss(reduction="mean").to(self.device)
+        self.kl_loss = nn.KLDivLoss(reduction='batchmean').to(self.device)
+        self.huber_loss = nn.HuberLoss(reduction='mean').to(self.device)
         self.xs = xs.to(self.device).detach().requires_grad_(True)
         self.xs_init = self.xs.clone().detach()
         self.xt = xt.to(self.device)
@@ -111,30 +114,32 @@ class KLTripletOptimizer:
         self.kl_w = kl_w
         self.hu_w = hu_w
 
-    def compute_histogram(self, x: torch.Tensor):
+    def compute_histogram(self, x:torch.Tensor):
         # b, c, h, w = x.size()
         x = x.detach().squeeze().flatten()
         hist = torch.histc(x, bins=256)
         hist = hist / hist.sum()
         return hist
-
+    
     def train(self, num_epoches=3000):
-        for _ in range(num_epoches):
+        for _ in tqdm(range(num_epoches)):
             self.optimizer.zero_grad()
             xs_norm = torch.sigmoid(self.xs)
             xd_norm = torch.sigmoid(self.xd)
             hist_s = self.compute_histogram(xs_norm)
             hist_d = self.compute_histogram(xd_norm)
 
-            loss_kl = self.kl_loss(torch.log(hist_s + 1e-10), hist_d)
+            loss_kl = self.kl_loss(torch.log(hist_s+1e-10), hist_d)
             loss_huber = self.huber_loss(self.xs, self.xt)
-            reg_loss = (
-                self.reg_weight * torch.norm(self.xs - self.xs_init) ** 2
-            )  # add a very small l2 to avoid overfitting
-            total_loss = self.kl_w * loss_kl + self.hu_w * loss_huber + reg_loss
+            reg_loss = self.reg_weight * torch.norm(self.xs - self.xs_init)**2  # add a very small l2 to avoid overfitting
+        
+            self.kl_w = 1 / (1 + loss_huber.detach().item())
+            self.hu_w = 1 / (1 + loss_kl.detach().item())
+            total_loss = self.kl_w*loss_kl + self.hu_w*loss_huber + reg_loss
 
             total_loss.backward()
             self.optimizer.step()
+
 
             self.kl_losses.append(loss_kl.item())
             self.huber_losses.append(loss_huber.item())

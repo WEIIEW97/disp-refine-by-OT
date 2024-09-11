@@ -30,8 +30,12 @@ def save_numpy_array(arr, save_path):
  
 
 if __name__ == "__main__":
-    model_path="/home/william/Downloads/depth_anything_v2_vitl.pth"
-    subfolders = [11, 12, 19]
+    import os
+    m_types = ['vits', 'vitb', 'vitl']
+    model_path="/home/william/Downloads/depth_anything_v2_vitb.pth"
+    # subfolders = [11, 12, 19]
+    top_dir = "/home/william/extdisk/data/disp-refine/feynman/"
+    subfolders = [f for f in os.listdir(top_dir) if os.path.isdir(os.path.join(top_dir, f))]
     for sub in subfolders:
         # path = f"data/{sub}/output_0222_agg_mask.mat"
         # disp = load_disp_from_mat(path)
@@ -39,14 +43,14 @@ if __name__ == "__main__":
         # disp_save_path = f'data/{sub}/output_0222_agg.npy'
         # save_numpy_array(disp.T, disp_save_path)
 
-        image_path = f"data/{sub}/left.png"
+        image_path = f"{top_dir}/{sub}/left.bmp"
         image = cv2.imread(image_path)
         # predicted = inference_single(image, model_path)
-        predicted = inference_single_v2(image, model_path)
+        predicted = inference_single_v2(image, model_path, encoder='vitb')
     # print(predicted)
     # print(predicted.shape)
     # save_path = "data/11/output_0222_DL.mat"  
     # save_numpy_array_to_matlab(predicted, save_path)
-        predicted_save_path = f"data/{sub}/output_0626_DLV2.npy"
+        predicted_save_path = f"{top_dir}/{sub}/dam_v2_vitb_out.npy"
         save_numpy_array(predicted, predicted_save_path)
-    print("===> done!")  
+    print("=====================> done! <=====================")  
