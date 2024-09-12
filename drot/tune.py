@@ -88,30 +88,73 @@ def recheck_vectorized(
     print("===> rechecking is completed!")
     return Xsc
 
+class KolmogorovSmirnovLoss(nn.Module):
+    def __init__(self, alpha=torch.tensor([0.05, 0.01, 0.001, 0.0001])):
+        super(KolmogorovSmirnovLoss, self).__init__()
+        # Ensure alpha is registered as a parameter if it needs gradients or as a buffer if it does not
+        self.register_buffer('alpha', alpha)  # Using register_buffer to keep track of on device
+
+    def alpha_D(self, D, n1, n2):
+        return 2 * (-D.square() * 2 * n1 / (1 + n1 / n2)).exp()
+
+    def forward(self, xs, xt):
+        xs, xt = xs.to(self.alpha.device), xt.to(self.alpha.device)
+        n1 = xs.shape[-1]
+        n2 = xt.shape[-1]
+
+        # Confidence level calculation
+        c_ks = torch.sqrt(-0.5 * (self.alpha / 2).log())
+        sup_conf =  c_ks * torch.as_tensor((n1 + n2) / (n1 * n2)).sqrt()
+        sup_conf = sup_conf.reshape((1, self.alpha.shape[0]))
+
+        comb = torch.cat((xs, xt), dim=-1)
+        comb_argsort = comb.argsort(dim=-1)
+
+        pdf1 = torch.where(comb_argsort < n1, 1 / n1, 0)
+        pdf2 = torch.where(comb_argsort >= n1, 1 / n2, 0)
+
+        cdf1 = pdf1.cumsum(dim=-1)
+        cdf2 = pdf2.cumsum(dim=-1)
+
+        sup, _ = (cdf1 - cdf2).abs().max(dim=-1, keepdim=True)
+        self.conf_res = sup > sup_conf
+        v = self.alpha_D(sup, n1, n2)
+        return v.mean()
+
+
 
 class KLTripletOptimizer:
-
-    def __init__(self, xs, xt, xd, device='cuda', reg_weight=1e-8):
+    def __init__(self, xs, xt, xd, dist='ks', device='cuda', reg_weight=1e-8,  patience=10, min_delta=1e-2, auto_weights_adjust=True):
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
+        assert dist in ('ks', 'kl'), f'cannot support distribution {dist} metric.'
+        self.dist = dist
+        self.auto_weights_adjust = auto_weights_adjust
         print(f"Running on: {self.device}")
+        self.ks_loss = KolmogorovSmirnovLoss().to(self.device)
         self.kl_loss = nn.KLDivLoss(reduction='batchmean').to(self.device)
         self.huber_loss = nn.HuberLoss(reduction='mean').to(self.device)
+        # self.log_huber_loss = LogHuberLoss(delta=1).to(self.device)
         self.xs = xs.to(self.device).detach().requires_grad_(True)
         self.xs_init = self.xs.clone().detach()
         self.xt = xt.to(self.device)
         self.xd = xd.to(self.device)
 
         self.optimizer = optim.Adam([self.xs], lr=0.01)
-        self.kl_losses = []
+        self.dist_losses = []
         self.huber_losses = []
         self.total_losses = []
 
-        self.kl_w = 1.0
+        self.dist_w = 1.0
         self.hu_w = 1.0
         self.reg_weight = reg_weight
 
-    def weights_adjust(self, kl_w, hu_w):
-        self.kl_w = kl_w
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best_loss = float('inf')
+        self.wait = 0  # Counter for how long the loss has not improved
+
+    def weights_adjust(self, dist_w, hu_w):
+        self.dist_w = dist_w
         self.hu_w = hu_w
 
     def compute_histogram(self, x:torch.Tensor):
@@ -122,25 +165,39 @@ class KLTripletOptimizer:
         return hist
     
     def train(self, num_epoches=3000):
-        for _ in tqdm(range(num_epoches)):
+        for epoch in tqdm(range(num_epoches)):
             self.optimizer.zero_grad()
-            xs_norm = torch.sigmoid(self.xs)
-            xd_norm = torch.sigmoid(self.xd)
-            hist_s = self.compute_histogram(xs_norm)
-            hist_d = self.compute_histogram(xd_norm)
-
-            loss_kl = self.kl_loss(torch.log(hist_s+1e-10), hist_d)
+            if self.dist == 'kl':
+                xs_norm = torch.sigmoid(self.xs)
+                xd_norm = torch.sigmoid(self.xd)
+                hist_s = self.compute_histogram(xs_norm)
+                hist_d = self.compute_histogram(xd_norm)
+                loss_dist = self.kl_loss(torch.log(hist_s+1e-10), hist_d)
+            else:
+                loss_dist = self.ks_loss(self.xs, self.xt)
             loss_huber = self.huber_loss(self.xs, self.xt)
+            # loss_log_huber = self.log_huber_loss(self.xs, self.xt)
             reg_loss = self.reg_weight * torch.norm(self.xs - self.xs_init)**2  # add a very small l2 to avoid overfitting
-        
-            self.kl_w = 1 / (1 + loss_huber.detach().item())
-            self.hu_w = 1 / (1 + loss_kl.detach().item())
-            total_loss = self.kl_w*loss_kl + self.hu_w*loss_huber + reg_loss
+
+            if self.auto_weights_adjust:
+                self.dist_w = 1 / (1 + loss_huber.detach().item())
+                self.hu_w = 1 / (1 + loss_dist.detach().item())
+            total_loss = self.dist_w*loss_dist + self.hu_w*loss_huber + reg_loss
 
             total_loss.backward()
             self.optimizer.step()
 
 
-            self.kl_losses.append(loss_kl.item())
-            self.huber_losses.append(loss_huber.item())
+            self.dist_losses.append(self.dist_w*loss_dist.item())
+            self.huber_losses.append(self.hu_w*loss_huber.item())
             self.total_losses.append(total_loss.item())
+
+            if total_loss.item() < self.best_loss - self.min_delta:
+                self.best_loss = total_loss.item()
+                self.wait = 0  # Reset wait counter
+            else:
+                self.wait += 1
+
+            if self.wait >= self.patience:
+                print(f"Training stopped early at epoch {epoch+1}")
+                break

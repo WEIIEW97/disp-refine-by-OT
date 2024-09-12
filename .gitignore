@@ -12,3 +12,9 @@ build
 **/cmake-build-release
 
 reports/
+
+.vs
+out
+
+
+scratchbook.ipynb
