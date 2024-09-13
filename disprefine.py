@@ -34,16 +34,16 @@ if __name__ == "__main__":
     m_types = ['vits', 'vitb', 'vitl']
     # model_path="D:/william/checkpoints/depth-anything/v2/depth_anything_v2_vitb.pth"
     # subfolders = [11, 12, 19]
-    top_dir = "D:/william/data/disp-refine"
+    top_dir = "D:/william/data/disp-refine/ori"
     subfolders = [f for f in os.listdir(top_dir) if os.path.isdir(os.path.join(top_dir, f))]
     for type in m_types:
         print(f"processing {type} right now ...")
         model_path = f"D:/william/checkpoints/depth-anything/v2/depth_anything_v2_{type}.pth"
         for sub in subfolders:
-            # path = f"data/{sub}/output_0222_agg_mask.mat"
-            # disp = load_disp_from_mat(path)
+            # path = f"{top_dir}/{sub}/output_0222_agg_mask.mat"
+            # disp = load_disp_from_mat(path, "out/s1out/cleanDispL")
             # print(disp.T.shape)
-            # disp_save_path = f'data/{sub}/output_0222_agg.npy'
+            # disp_save_path = f'{top_dir}/{sub}/output_0222_agg.npy'
             # save_numpy_array(disp.T, disp_save_path)
 
             image_path = f"{top_dir}/{sub}/left.png"

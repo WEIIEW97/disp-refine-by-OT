@@ -124,7 +124,7 @@ class KolmogorovSmirnovLoss(nn.Module):
 
 
 class KLTripletOptimizer:
-    def __init__(self, xs, xt, xd, dist='ks', device='cuda', reg_weight=1e-8,  patience=10, min_delta=1e-2, auto_weights_adjust=True):
+    def __init__(self, xs, xt, xd, dist='kl', device='cuda', reg_weight=1e-8,  patience=10, min_delta=1e-2, auto_weights_adjust=True):
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         assert dist in ('ks', 'kl'), f'cannot support distribution {dist} metric.'
         self.dist = dist
