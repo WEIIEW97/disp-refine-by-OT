@@ -13,7 +13,7 @@ from .depth_anything.dpt import DPT_DINOv2
 from .depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
 
 from .depth_anything_v2.dpt import DepthAnythingV2
-from .depth_pro import create_model_and_transforms, load_rgb
+from .depth_pro import create_model_and_transforms, load_rgb, DEFAULT_MONODEPTH_CONFIG_DICT
 
 
 DPTV2_model_configs = {
@@ -231,9 +231,12 @@ class InferDepthPro:
         self.device = _get_torch_device()
         self._initialize()
 
-    def _initialize(self, is_half=True):
+    def _initialize(self, model_path, is_half=True):
         preci = torch.half if is_half else torch.float32
+        config = DEFAULT_MONODEPTH_CONFIG_DICT
+        config.checkpoint_uri = model_path
         self.model, self.transform = create_model_and_transforms(
+            config=config,
             device=self.device,
             precision=preci,
         )
