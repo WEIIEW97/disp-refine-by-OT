@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 import cv2
-from DL import inference_single, inference_single_v2
+from DL import inference_single, inference_single_v2, InferDepthPro
 
 
 def image_resize(img, sz):
@@ -34,12 +34,14 @@ if __name__ == "__main__":
     m_types = ['vits', 'vitb', 'vitl']
     # model_path="D:/william/checkpoints/depth-anything/v2/depth_anything_v2_vitb.pth"
     # subfolders = [11, 12, 19]
-    top_dir = "D:/william/data/disp-refine/_feynman_camera_M1F0001222_leftir_image_rect_color"
+    top_dir = "/home/william/extdisk/data/test_mono/"
+    predicted_save_dir = f"{top_dir}/output"
+    os.makedirs(predicted_save_dir, exist_ok=True)
     subfolders = [f for f in os.listdir(top_dir) if os.path.isdir(os.path.join(top_dir, f))]
     subfiles = [f for f in os.listdir(top_dir) if os.path.isfile(os.path.join(top_dir, f)) and f.endswith(".png")]
     for type in m_types:
         print(f"processing {type} right now ...")
-        model_path = f"D:/william/checkpoints/depth-anything/v2/depth_anything_v2_{type}.pth"
+        model_path = f"/home/william/extdisk/checkpoints/depth-anything/depth_anything_v2_{type}.pth"
         for sub in subfiles:
             print(f"processing {sub} ...")
             # path = f"{top_dir}/{sub}/output_0222_agg_mask.mat"
@@ -57,7 +59,7 @@ if __name__ == "__main__":
         # print(predicted.shape)
         # save_path = "data/11/output_0222_DL.mat"  
         # save_numpy_array_to_matlab(predicted, save_path)
-            predicted_save_path = f"{top_dir}/output/dam_v2_{type}_out.npy"
+            
+            predicted_save_path = f"{predicted_save_dir}/dam_v2_{type}_out_{sub}.npy"
             save_numpy_array(predicted, predicted_save_path)
-            break
     print("=====================> done! <=====================")  

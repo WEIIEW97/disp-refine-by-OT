@@ -1,1 +1,1 @@
-from .inference import inference_single, inference_single_v2
+from .inference import inference_single, inference_single_v2, InferDepthPro, InferDAM

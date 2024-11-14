@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import os
 import glob
-import  matplotlib
+import matplotlib
 import torch
 import torch.nn.functional as F
 from torchvision.transforms import Compose
@@ -13,37 +13,23 @@ from .depth_anything.dpt import DPT_DINOv2
 from .depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
 
 from .depth_anything_v2.dpt import DepthAnythingV2
+from .depth_pro import create_model_and_transforms, load_rgb
 
 
 DPTV2_model_configs = {
-    'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
-    'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
-    'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
-    'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
+    "vits": {"encoder": "vits", "features": 64, "out_channels": [48, 96, 192, 384]},
+    "vitb": {"encoder": "vitb", "features": 128, "out_channels": [96, 192, 384, 768]},
+    "vitl": {
+        "encoder": "vitl",
+        "features": 256,
+        "out_channels": [256, 512, 1024, 1024],
+    },
+    "vitg": {
+        "encoder": "vitg",
+        "features": 384,
+        "out_channels": [1536, 1536, 1536, 1536],
+    },
 }
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--img_path", type=str)
-    parser.add_argument("--encoder", type=str, default="vitl", choices=['vits','vitb','vitl','vitg'])
-    parser.add_argument("--outdir", type=str, default="vis_depth")
-    parser.add_argument("--model_path", type=str, default="depth_anything_vitl14.pth")
-    parser.add_argument("--input_size", type=int, default=518)
-    parser.add_argument(
-        "--pred_only",
-        dest="pred_only",
-        action="store_true",
-        help="only display the prediction",
-    )
-    parser.add_argument(
-        "--grayscale",
-        dest="grayscale",
-        action="store_true",
-        help="do not apply colorful palette",
-    )
-
-
-    return parser.parse_args()
 
 
 def preprocess(args, device):
@@ -102,72 +88,6 @@ def preprocess(model_path, device):
     return model, transform
 
 
-def inference(args):
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    model, transform = preprocess(args, DEVICE)
-
-    if os.path.isfile(args.img_path):
-        if args.img_path.endswith("txt"):
-            with open(args.img_path, "r") as f:
-                filenames = f.read().splitlines()
-        else:
-            filenames = [args.img_path]
-    else:
-        filenames = os.listdir(args.img_path)
-        filenames = [
-            os.path.join(args.img_path, filename)
-            for filename in filenames
-            if not filename.startswith(".")
-        ]
-        filenames.sort()
-
-    os.makedirs(args.outdir, exist_ok=True)
-    os.makedirs(args.outdir + "/raw", exist_ok=True)
-    os.makedirs(args.outdir + "/cm", exist_ok=True)
-
-    for filename in tqdm(filenames):
-        raw_image = cv2.imread(filename)
-        image = cv2.cvtColor(raw_image, cv2.COLOR_BGR2RGB) / 255.0
-
-        h, w = image.shape[:2]
-
-        image = transform({"image": image})["image"]
-        image = torch.from_numpy(image).unsqueeze(0).to(DEVICE)
-
-        with torch.no_grad():
-            depth = model(image)
-
-        depth = F.interpolate(
-            depth[None], (h, w), mode="bilinear", align_corners=False
-        )[0, 0]
-        depth_raw = depth.cpu().numpy().astype(np.uint16)
-        depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
-
-        depth = depth.cpu().numpy().astype(np.uint8)
-
-        if args.grayscale:
-            depth_cm = np.repeat(depth[..., np.newaxis], 3, axis=-1)
-        else:
-            depth_cm = cv2.applyColorMap(depth, cv2.COLORMAP_INFERNO)
-
-        filename = os.path.basename(filename)
-
-        cv2.imwrite(
-            os.path.join(
-                args.outdir + "/raw", filename[: filename.rfind(".")] + "_depth_raw.png"
-            ),
-            depth_raw,
-        )
-        cv2.imwrite(
-            os.path.join(
-                args.outdir + "/cm", filename[: filename.rfind(".")] + "_depth_cm.png"
-            ),
-            depth_cm,
-        )
-
-    print("-> Done!")
-
-
 def inference_single(image, model_path, is_scale=False) -> np.ndarray:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     model, transform = preprocess(model_path=model_path, device=DEVICE)
@@ -195,55 +115,9 @@ def inference_single(image, model_path, is_scale=False) -> np.ndarray:
         return depth_raw
 
 
-def DPTV2_inference(args):
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    model = DepthAnythingV2(**DPTV2_model_configs[args.encoder])
-    ckpt = torch.load(args.model_path)
-    model.load_state_dict(ckpt)
-    model = model.to(DEVICE).eval()
-
-    total_params = sum(param.numel() for param in model.parameters())
-    print("Total parameters: {:.2f}M".format(total_params / 1e6))
-    
-
-    if os.path.isfile(args.img_path):
-        if args.img_path.endswith('txt'):
-            with open(args.img_path, 'r') as f:
-                filenames = f.read().splitlines()
-        else:
-            filenames = [args.img_path]
-    else:
-        filenames = glob.glob(os.path.join(args.img_path, '**/*'), recursive=True)
-    
-    os.makedirs(args.outdir, exist_ok=True)
-    
-    cmap = matplotlib.colormaps.get_cmap('Spectral_r')
-
-    for k, filename in enumerate(filenames):
-        print(f'Progress {k+1}/{len(filenames)}: {filename}')
-    
-        raw_image = cv2.imread(filename)
-        depth = model.infer_image(raw_image, args.input_size)
-        depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
-        depth = depth.astype(np.uint8)
-        
-        if args.grayscale:
-            depth = np.repeat(depth[..., np.newaxis], 3, axis=-1)
-        else:
-            depth = (cmap(depth)[:, :, :3] * 255)[:, :, ::-1].astype(np.uint8)
-        
-        if args.pred_only:
-            cv2.imwrite(os.path.join(args.outdir, os.path.splitext(os.path.basename(filename))[0] + '.png'), depth)
-        else:
-            split_region = np.ones((raw_image.shape[0], 50, 3), dtype=np.uint8) * 255
-            combined_result = cv2.hconcat([raw_image, split_region, depth])
-            
-            cv2.imwrite(os.path.join(args.outdir, os.path.splitext(os.path.basename(filename))[0] + '.png'), combined_result)
-
-    print("--> done!")
-
-
-def inference_single_v2(image, model_path, encoder='vitl', input_size=518, is_scale=False):
+def inference_single_v2(
+    image, model_path, encoder="vitl", input_size=518, is_scale=False
+):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     model = DepthAnythingV2(**DPTV2_model_configs[encoder])
     ckpt = torch.load(model_path)
@@ -264,10 +138,111 @@ def inference_single_v2(image, model_path, encoder='vitl', input_size=518, is_sc
         return depth_raw
 
 
-if __name__ == "__main__":
-    args = parse_args()
-    # for DPTV1
-    # inference(args)
+def _get_torch_device() -> torch.device:
+    """Get the Torch device."""
+    device = torch.device("cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda:0")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    return device
 
-    # for DPTV2
-    DPTV2_inference(args)
+
+class InferDAM:
+    def __init__(self):
+        self.device = _get_torch_device()
+
+    def _initialize(
+        self, model_path, is_scale=False, mode="v2", encoder="vitl", input_size=518
+    ):
+
+        self.is_scale = is_scale
+        self.mode = mode
+
+        assert mode in (
+            "v1",
+            "v2",
+        ), f"{mode} is not supported! only support v1 and v2 now!"
+
+        if mode == "v2":
+            assert (
+                encoder is not None and input_size is not None
+            ), "you should specify encoder and input_size arguments."
+
+        if mode == "v1":
+            self.model, self.transform = preprocess(
+                model_path=model_path, device=self.device
+            )
+        else:
+            self.model = DepthAnythingV2(**DPTV2_model_configs[encoder])
+            ckpt = torch.load(model_path)
+            self.model.load_state_dict(ckpt)
+            self.input_size = input_size
+
+    def _infer_v1(self, image_path):
+        image = cv2.imread(image_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0
+        h, w = image.shapep[:2]
+
+        image = self.transform({"image": image})["image"]
+        image = torch.from_numpy(image).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            depth = self.model(image)
+
+        depth = F.interpolate(
+            depth[None], (h, w), mode="bilinear", align_corners=False
+        )[0, 0]
+        depth_raw = depth.cpu().numpy().astype(np.float32)
+        depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
+
+        depth = depth.cpu().numpy().astype(np.uint8)
+        if self.is_scale:
+            return depth
+        else:
+            return depth_raw
+
+    def _infer_v2(self, image_path):
+        image = cv2.imread(image_path)
+        self.model = self.model.to(self.device).eval()
+
+        depth = self.model.infer_image(image, self.input_size)
+        depth_raw = depth.astype(np.float32)
+        depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
+
+        depth = depth.astype(np.uint8)
+        if self.is_scale:
+            return depth
+        else:
+            return depth_raw
+
+    def get_params_count(self):
+        total_params = sum(param.numel() for param in self.model.parameters())
+        print("Total parameters: {:.2f}M".format(total_params / 1e6))
+
+    def infer(self, image_path):
+        if self.mode == "v1":
+            return self._infer_v1(image_path)
+        else:
+            return self._infer_v2(image_path)
+
+class InferDepthPro:
+    def __init__(self):
+        self.device = _get_torch_device()
+        self._initialize()
+
+    def _initialize(self, is_half=True):
+        preci = torch.half if is_half else torch.float32
+        self.model, self.transform = create_model_and_transforms(
+            device=self.device,
+            precision=preci,
+        )
+        self.model.eval()
+
+    def infer(self, image_path):
+        image, _, f_px = load_rgb(image_path)
+        pred = self.model.infer(self.transform(image), f_px=f_px)
+        depth = pred["depth"]  # Depth in [m].
+        focallenth_px = pred["focallength_px"]  # Focal length in pixels.
+
+        return depth, focallenth_px
