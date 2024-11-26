@@ -13,7 +13,11 @@ from .depth_anything.dpt import DPT_DINOv2
 from .depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
 
 from .depth_anything_v2.dpt import DepthAnythingV2
-from .depth_pro import create_model_and_transforms, load_rgb, DEFAULT_MONODEPTH_CONFIG_DICT
+from .depth_pro import (
+    create_model_and_transforms,
+    load_rgb,
+    DEFAULT_MONODEPTH_CONFIG_DICT,
+)
 
 
 DPTV2_model_configs = {
@@ -152,7 +156,7 @@ class InferDAM:
     def __init__(self):
         self.device = _get_torch_device()
 
-    def _initialize(
+    def initialize(
         self, model_path, is_scale=False, mode="v2", encoder="vitl", input_size=518
     ):
 
@@ -179,6 +183,7 @@ class InferDAM:
             self.model.load_state_dict(ckpt)
             self.input_size = input_size
 
+
     def _infer_v1(self, image_path):
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0
@@ -186,7 +191,7 @@ class InferDAM:
 
         image = self.transform({"image": image})["image"]
         image = torch.from_numpy(image).unsqueeze(0).to(self.device)
-
+ 
         with torch.no_grad():
             depth = self.model(image)
 
@@ -226,12 +231,12 @@ class InferDAM:
         else:
             return self._infer_v2(image_path)
 
+
 class InferDepthPro:
     def __init__(self):
         self.device = _get_torch_device()
-        self._initialize()
 
-    def _initialize(self, model_path, is_half=True):
+    def initialize(self, model_path, is_half=True):
         preci = torch.half if is_half else torch.float32
         config = DEFAULT_MONODEPTH_CONFIG_DICT
         config.checkpoint_uri = model_path
@@ -244,8 +249,12 @@ class InferDepthPro:
 
     def infer(self, image_path):
         image, _, f_px = load_rgb(image_path)
+        print(f"image max value is {image.max()}, min value is {image.min()}")
         pred = self.model.infer(self.transform(image), f_px=f_px)
         depth = pred["depth"]  # Depth in [m].
         focallenth_px = pred["focallength_px"]  # Focal length in pixels.
 
         return depth, focallenth_px
+
+    def get_device_info(self):
+        print(f"You are running at {self.device}!")
