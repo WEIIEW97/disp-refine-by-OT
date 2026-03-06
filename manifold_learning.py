@@ -278,25 +278,54 @@ def recheck_vectorized(Xs: np.ndarray, Xt: np.ndarray, kernel_size=4, alpha=0.1,
     return Xsc
 
 
+def manifold_optimize(M_in, M_ref, method="normal"):
+    print(f"Switching to {method} method.")
+    ret = build_pipeline(Xagg=M_in, Xdl=M_ref, method=method)
+    diff_ret = ret - M_in
+    ret_recheck = recheck(ret, M_in, alpha=0.15)
+    return ret_recheck
+
+
 
 if __name__ == "__main__":
     # for the full resolution, original data
+    from pathlib import Path
+
     INVALID_THR = 10
-    subfolders = [11, 12, 19]
-    for sub in subfolders:
-        agg_path = f'data/{sub}/output_0222_agg.npy'
-        dl_path = f'data/{sub}/output_0222_DL.npy'
-        dlv2_path = f'data/{sub}/output_0626_DLV2.npy'
-        ot_agg_normal_save_path = f'data/{sub}/OT_normal_0626_agg.mat'
-        ot_agg_minmax_save_path = f'data/{sub}/OT_minmax_0626_agg.mat'
-        scaled_agg_save_path = f'data/{sub}/scaled_0626_agg.mat'
-        full_agg = np.load(agg_path)
-        full_dl = np.load(dl_path)
-        full_dlv2 = np.load(dlv2_path)
+    focal = 390.811
+    baseline = 94.994
+    home_dir = "/home/william/Codes/pc-optimize/data"
+    nvp_z_dir = "/home/william/Codes/pc-optimize/data/nvpdepth"
+    dam_l_d_dir = "/home/william/Codes/pc-optimize/data/damv2/damv2_vitl"
+    ot_dir = "/home/william/Codes/pc-optimize/data/ot"
+    Path(ot_dir).mkdir(exist_ok=True)
+    # subfolders = [11, 12, 19]
+    for p in Path(dam_l_d_dir).glob("*.npy"):
+        ref_name = p.name
+        nvp_name = p.name.replace("_vitl.npy", "")
+        ot_normal_name = nvp_name.replace(".png", "_normal.npy")
+        ot_minmax_name = nvp_name.replace(".png", "_minmax.npy")
+        agg_path = Path(nvp_z_dir) / Path(nvp_name)
+        dl_path = Path(dam_l_d_dir) / Path(ref_name)
+        # dlv2_path = f'data/{sub}/output_0626_DLV2.npy'
+        # ot_agg_normal_save_path = f'data/{sub}/OT_normal_0626_agg.mat'
+        # ot_agg_minmax_save_path = f'data/{sub}/OT_minmax_0626_agg.mat'
+        # scaled_agg_save_path = f'data/{sub}/scaled_0626_agg.mat'
+        # full_agg = np.load(agg_path)
+        # full_dl = np.load(dl_path)
+        # full_dlv2 = np.load(dlv2_path)
+
+        full_agg = cv2.imread(str(agg_path), -1).astype(np.float32)
+        full_dl = np.load(str(dl_path))
+
+        full_dl = np.divide(focal*baseline, full_dl, out=np.zeros_like(full_dl), where=(full_dl != 0))
 
         # resize the source and target image for computation efficiency
-        scaled_agg = image_resize(full_agg, (full_agg.shape[0]//2, full_agg.shape[1]//2))
-        scaled_dl = image_resize(full_dlv2, (full_dlv2.shape[0]//2, full_dlv2.shape[1]//2))
+        # scaled_agg = image_resize(full_agg, (full_agg.shape[0]//2, full_agg.shape[1]//2))
+        # scaled_dl = image_resize(full_dlv2, (full_dlv2.shape[0]//2, full_dlv2.shape[1]//2))
+
+        scaled_agg = full_agg
+        scaled_dl = full_dl
 
         print("Switching to normal method.")
         ret_norm = build_pipeline(Xagg=scaled_agg, Xdl=scaled_dl, method="normal")
@@ -311,10 +340,14 @@ if __name__ == "__main__":
         ret_recheck_minmax = recheck(ret_minmax, scaled_agg, alpha=0.15)
         print(f"===> Tackling {agg_path} done.")
         print(f"===> The mean difference offset is {np.mean(diff_ret_minmax)}")
+        
+        np.save(ot_dir/Path(ot_normal_name), ret_recheck_norm)
+        np.save(ot_dir/Path(ot_minmax_name), ret_recheck_minmax)
 
-        save_numpy_array_to_matlab(scaled_agg, scaled_agg_save_path)
-        save_numpy_array_to_matlab(ret_recheck_norm, ot_agg_normal_save_path)
-        save_numpy_array_to_matlab(ret_recheck_minmax, ot_agg_minmax_save_path)
+
+        # save_numpy_array_to_matlab(scaled_agg, scaled_agg_save_path)
+        # save_numpy_array_to_matlab(ret_recheck_norm, ot_agg_normal_save_path)
+        # save_numpy_array_to_matlab(ret_recheck_minmax, ot_agg_minmax_save_path)
 
     print("===> mission completed!")
 

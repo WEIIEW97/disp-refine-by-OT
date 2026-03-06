@@ -36,11 +36,35 @@ DPTV2_model_configs = {
 }
 
 
+def _safe_torch_load(model_path, device):
+    load_kwargs = {"map_location": device}
+    try:
+        return torch.load(model_path, weights_only=True, **load_kwargs)
+    except TypeError:
+        # Older Torch versions don't support `weights_only`.
+        return torch.load(model_path, **load_kwargs)
+    except Exception:
+        # Some checkpoints contain non-tensor objects and need legacy loading.
+        return torch.load(model_path, weights_only=False, **load_kwargs)
+
+
+def _extract_state_dict(ckpt):
+    if isinstance(ckpt, dict):
+        for key in ("state_dict", "model_state_dict", "model"):
+            value = ckpt.get(key)
+            if isinstance(value, dict):
+                ckpt = value
+                break
+    if isinstance(ckpt, dict) and any(k.startswith("module.") for k in ckpt.keys()):
+        ckpt = {k.replace("module.", "", 1): v for k, v in ckpt.items()}
+    return ckpt
+
+
 def preprocess(args, device):
     ## cannot do this in local files
     # model = DepthAnything.from_pretrained(args.model_path,  local_files_only=True)
     model = DPT_DINOv2("vitl", features=256, out_channels=[256, 512, 1024, 1024])
-    ckpt = torch.load(args.model_path)
+    ckpt = _extract_state_dict(_safe_torch_load(args.model_path, device))
     model.load_state_dict(ckpt)
     model = model.to(device).eval()
 
@@ -67,7 +91,7 @@ def preprocess(args, device):
 
 def preprocess(model_path, device):
     model = DPT_DINOv2("vitl", features=256, out_channels=[256, 512, 1024, 1024])
-    ckpt = torch.load(model_path)
+    ckpt = _extract_state_dict(_safe_torch_load(model_path, device))
     model.load_state_dict(ckpt)
     model = model.to(device).eval()
 
@@ -124,7 +148,7 @@ def inference_single_v2(
 ):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     model = DepthAnythingV2(**DPTV2_model_configs[encoder])
-    ckpt = torch.load(model_path)
+    ckpt = _extract_state_dict(_safe_torch_load(model_path, DEVICE))
     model.load_state_dict(ckpt)
     model = model.to(DEVICE).eval()
 
@@ -142,19 +166,37 @@ def inference_single_v2(
         return depth_raw
 
 
-def _get_torch_device() -> torch.device:
-    """Get the Torch device."""
-    device = torch.device("cpu")
-    if torch.cuda.is_available():
-        device = torch.device("cuda:0")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    return device
+def _resolve_torch_device(device: str = "auto") -> torch.device:
+    """Resolve the Torch device from an explicit user choice."""
+    if device == "auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda:0")
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+
+    if device.startswith("cuda"):
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "CUDA was requested but is not available. "
+                "Check `nvidia-smi`, CUDA driver/runtime, and your PyTorch CUDA build."
+            )
+        return torch.device(device)
+
+    if device == "mps":
+        if not torch.backends.mps.is_available():
+            raise RuntimeError("MPS was requested but is not available on this machine.")
+        return torch.device("mps")
+
+    if device == "cpu":
+        return torch.device("cpu")
+
+    raise ValueError(f"Unsupported device '{device}'. Use auto/cpu/cuda/cuda:N/mps.")
 
 
 class InferDAM:
-    def __init__(self):
-        self.device = _get_torch_device()
+    def __init__(self, device: str = "auto"):
+        self.device = _resolve_torch_device(device)
 
     def initialize(
         self, model_path, is_scale=False, mode="v2", encoder="vitl", input_size=518
@@ -179,7 +221,7 @@ class InferDAM:
             )
         else:
             self.model = DepthAnythingV2(**DPTV2_model_configs[encoder])
-            ckpt = torch.load(model_path)
+            ckpt = _extract_state_dict(_safe_torch_load(model_path, self.device))
             self.model.load_state_dict(ckpt)
             self.input_size = input_size
 
@@ -187,7 +229,7 @@ class InferDAM:
     def _infer_v1(self, image_path):
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0
-        h, w = image.shapep[:2]
+        h, w = image.shape[:2]
 
         image = self.transform({"image": image})["image"]
         image = torch.from_numpy(image).unsqueeze(0).to(self.device)
@@ -234,7 +276,7 @@ class InferDAM:
 
 class InferDepthPro:
     def __init__(self):
-        self.device = _get_torch_device()
+        self.device = _resolve_torch_device()
 
     def initialize(self, model_path, is_half=True):
         preci = torch.half if is_half else torch.float32

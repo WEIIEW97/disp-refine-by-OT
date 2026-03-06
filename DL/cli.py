@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 from tqdm import tqdm
 
-from .inference import preprocess, DPTV2_model_configs
+from .inference import preprocess, DPTV2_model_configs, _resolve_torch_device, _safe_torch_load, _extract_state_dict
 from .depth_anything.dpt import DPT_DINOv2
 from .depth_anything_v2.dpt import DepthAnythingV2
 import os
@@ -15,7 +15,8 @@ import matplotlib
 
 
 def inference(args):
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    DEVICE = _resolve_torch_device(args.device)
+    print(f"Running on device: {DEVICE}")
     model, transform = preprocess(args, DEVICE)
 
     if os.path.isfile(args.img_path):
@@ -80,9 +81,10 @@ def inference(args):
     print("-> Done!")
 
 def DPTV2_inference(args):
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    DEVICE = _resolve_torch_device(args.device)
+    print(f"Running on device: {DEVICE}")
     model = DepthAnythingV2(**DPTV2_model_configs[args.encoder])
-    ckpt = torch.load(args.model_path)
+    ckpt = _extract_state_dict(_safe_torch_load(args.model_path, DEVICE))
     model.load_state_dict(ckpt)
     model = model.to(DEVICE).eval()
 
@@ -147,6 +149,7 @@ def parse_args():
     parser.add_argument("--outdir", type=str, default="vis_depth")
     parser.add_argument("--model_path", type=str, default="depth_anything_vitl14.pth")
     parser.add_argument("--input_size", type=int, default=518)
+    parser.add_argument("--device", type=str, default="auto", help="auto, cpu, cuda, cuda:N, mps")
     parser.add_argument(
         "--pred_only",
         dest="pred_only",

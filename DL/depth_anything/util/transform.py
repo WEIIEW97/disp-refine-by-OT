@@ -1,12 +1,11 @@
-import random
-from PIL import Image, ImageOps, ImageFilter
 import torch
-from torchvision import transforms
 import torch.nn.functional as F
 
 import numpy as np
 import cv2
 import math
+
+from torchvision.transforms import Compose
 
 
 def apply_min_size(sample, size, image_interpolation_method=cv2.INTER_AREA):
@@ -246,3 +245,29 @@ class PrepareForNet(object):
             sample["semseg_mask"] = np.ascontiguousarray(sample["semseg_mask"])
 
         return sample
+
+
+transform = Compose(
+    [
+        Resize(
+            width=518,
+            height=518,
+            resize_target=False,
+            keep_aspect_ratio=False,
+            ensure_multiple_of=14,
+            resize_method="lower_bound",
+            image_interpolation_method=cv2.INTER_CUBIC,
+        ),
+        NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        PrepareForNet(),
+    ]
+)
+
+
+def load_image(filepath) -> tuple[np.ndarray, tuple[int, int]]:
+    image = cv2.imread(filepath)  # H, W, C
+    orig_shape = image.shape[:2]
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0
+    image = transform({"image": image})["image"]  # C, H, W
+    image = image[None]  # B, C, H, W
+    return image, orig_shape
